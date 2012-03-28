@@ -1,0 +1,3 @@
+This library will eventually support all the features of the PCA9685 chip.
+
+The started from and is 99% from pulling out the abilities written by neuroelec from his  HPRGB2 shield library here http://neuroelec.googlecode.com/svn/trunk/libraries/Arduino 1.0/HP_RGB_LED_Shield_V2/HPRGB2/
