@@ -6,14 +6,14 @@
 #define PCA9685_h
 
 #include "Arduino.h"
-#include <Wire.h>
+#include <I2C.h>
 
-class PCA9685 
+class PCA9685
 {
   public:
     PCA9685(uint8_t address);
     void        begin();
-    void        wake();    
+    void        wake();
     void        setPWMFrequency(uint16_t frequency);
     uint16_t    getPWMFrequency();
     void        PWMSingle(uint8_t , uint16_t);
