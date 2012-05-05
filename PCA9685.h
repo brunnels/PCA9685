@@ -11,16 +11,20 @@
 class PCA9685
 {
   public:
-    PCA9685(uint8_t address);
+    PCA9685(byte address);
     void        begin();
     void        wake();
     void        setPWMFrequency(uint16_t frequency);
     uint16_t    getPWMFrequency();
-    void        PWMSingle(uint8_t , uint16_t);
-    void        PWMSingle12(uint8_t , uint16_t);
+    void        PWM(uint8_t startChannel, uint8_t endChannel, uint16_t value);
+    void        PWM(uint8_t channel , uint16_t value);
+    void        PWM12(uint8_t startChannel, uint8_t endChannel, uint16_t value);
+    void        PWM12(uint8_t channel , uint16_t value);
+
+
     uint16_t    getPWM(uint8_t channel);
   private:
-    uint8_t     _address;
+    byte        _address;
     uint16_t    _freq;
     void        PWMPreScale(uint8_t prescale);
 };
