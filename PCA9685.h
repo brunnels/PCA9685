@@ -25,7 +25,6 @@ class PCA9685
     uint16_t    getPWM(uint8_t channel);
   private:
     byte        _address;
-    uint16_t    _freq;
     void        PWMPreScale(uint8_t prescale);
 };
 #endif

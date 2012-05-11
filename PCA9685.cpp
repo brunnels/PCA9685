@@ -32,7 +32,6 @@ prog_uint16_t CIEL12[] PROGMEM = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 18, 20, 21,
 PCA9685::PCA9685(byte address)
 {
   _address = address;
-  _freq = 200;
 }
 
 /**
@@ -57,9 +56,8 @@ void PCA9685::wake()
  */
 void PCA9685::setPWMFrequency(uint16_t freq)
 {
-  uint8_t prescale = (6104 / freq) - 1; // FIXME preScale =round(25000000Hz/(4096*freq))-1
+  uint8_t prescale = round(((float)25000000 / (float)(freq * (long)4096))) - 1;
   PWMPreScale(prescale);
-  _freq = freq;
 }
 
 /**
@@ -68,7 +66,7 @@ void PCA9685::setPWMFrequency(uint16_t freq)
 uint16_t PCA9685::getPWMFrequency()
 {
   uint16_t freq;
-  I2c.read(_address, (byte) 0xFE, (uint8_t) 4);
+  I2c.read(_address, (byte) 0xFE, (uint8_t) 1);
   while (I2c.available()) {
     freq = I2c.receive();
   }
