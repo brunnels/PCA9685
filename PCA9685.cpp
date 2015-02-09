@@ -1,142 +1,280 @@
 /**
- * PCA9685.cpp - Arduino library to control PCA9685 chip.
- */
-#include "Arduino.h"
-#include <I2C.h>
+* PCA9685.cpp - Arduino library to control PCA9685 chip.
+*/
 #include "PCA9685.h"
 
-extern I2C I2c;
-
-#define CIELPWM(a) (pgm_read_word_near(CIEL12 + a)) // CIE Lightness lookup table function
-/**
- * 12 bits PWM to CIE Luminance conversion
- * L* = 116(Y/Yn)^1/3 - 16 , Y/Yn > 0.008856
- * L* = 903.3(Y/Yn), Y/Yn <= 0.008856
- */
-prog_uint16_t CIEL12[] PROGMEM = { 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 18, 20, 21, 23, 25, 27, 28, 30,
-  32, 34, 36, 37, 39, 41, 43, 45, 47, 49, 52, 54, 56, 59, 61, 64, 66, 69, 72, 75, 77, 80, 83, 87,
-  90, 93, 97, 100, 103, 107, 111, 115, 118, 122, 126, 131, 135, 139, 144, 148, 153, 157, 162, 167,
-  172, 177, 182, 187, 193, 198, 204, 209, 215, 221, 227, 233, 239, 246, 252, 259, 265, 272, 279,
-  286, 293, 300, 308, 315, 323, 330, 338, 346, 354, 362, 371, 379, 388, 396, 405, 414, 423, 432,
-  442, 451, 461, 471, 480, 490, 501, 511, 521, 532, 543, 554, 565, 576, 587, 599, 610, 622, 634,
-  646, 658, 670, 683, 696, 708, 721, 734, 748, 761, 775, 789, 802, 817, 831, 845, 860, 875, 890,
-  905, 920, 935, 951, 967, 983, 999, 1015, 1032, 1048, 1065, 1082, 1099, 1117, 1134, 1152, 1170,
-  1188, 1206, 1225, 1243, 1262, 1281, 1301, 1320, 1340, 1359, 1379, 1400, 1420, 1441, 1461, 1482,
-  1504, 1525, 1547, 1568, 1590, 1613, 1635, 1658, 1681, 1704, 1727, 1750, 1774, 1798, 1822, 1846,
-  1871, 1896, 1921, 1946, 1971, 1997, 2023, 2049, 2075, 2101, 2128, 2155, 2182, 2210, 2237, 2265,
-  2293, 2322, 2350, 2379, 2408, 2437, 2467, 2497, 2527, 2557, 2587, 2618, 2649, 2680, 2712, 2743,
-  2775, 2807, 2840, 2872, 2905, 2938, 2972, 3006, 3039, 3074, 3108, 3143, 3178, 3213, 3248, 3284,
-  3320, 3356, 3393, 3430, 3467, 3504, 3542, 3579, 3617, 3656, 3694, 3733, 3773, 3812, 3852, 3892,
-  3932, 3973, 4013, 4055, 4095 };
-
-PCA9685::PCA9685(byte address)
+PCA9685::PCA9685(uint8_t address)
 {
   _address = address;
 }
 
 /**
- * I2C.begin for I2C.
- */
+* I2C.begin for I2C.
+*/
 void PCA9685::begin()
 {
-  I2c.begin();
+  Wire.begin();
+  restart();
+}
+
+/**
+* Wake PCA9685 oscillator and enable auto increment
+*/
+void PCA9685::restart()
+{
+  // wake
+  wake();
+
+  // go to sleep so we can restart
+  sleep();
+
+ /** 
+  * Restart and set Mode1 register to our prefered mode:
+  * Restart         : bit 7 = 1 - Will revert to 0 after restart
+  * Internal Clock  : bit 6 = 0
+  * Auto Increment  : bit 5 = 1
+  * Normal Mode     : bit 4 = 0
+  * SUB1 Disabled   : bit 3 = 0
+  * SUB2 Disabled   : bit 2 = 0
+  * SUB3 Disabled   : bit 1 = 0
+  * ALLCALL Enabled : bit 0 = 1
+  *
+  * B10100001 == 0xA1
+  */
+  _write8bits(PCA9685_MODE1, 0xA1);
+
+  // delay at least 500 us to wake 
+  delay(1);
+
+ /**
+  * Set Mode2 register to our prefered mode:
+  * Reserved                        : bits 7 through 5 are reserved
+  * Output logic state not inverted : bit 4 = 0
+  * Outputs change on STOP command  : bit 3 = 0
+  * All outputs are configured with
+  * a totem pole structure          : bit 2 = 1
+  * When OE = 1 (output drivers not
+  * enabled), LEDn = 0              : bit 1 & 0 = 00
+  *
+  * B00000100 == 0x04
+  */
+  _write8bits(PCA9685_MODE2, 0x04);
+}
+
+void PCA9685::setInvertedLogicMode()
+{
+  // get current mode2
+  uint8_t mode2 = _read8bits(PCA9685_MODE2);
+
+  // set inverted logic mode by setting bit 4 to 1
+  bitSet(mode2, 4);
+
+  _write8bits(PCA9685_MODE2, mode2);
+}
+
+void PCA9685::setNormalLogicMode()
+{
+  // get current mode2
+  uint8_t mode2 = _read8bits(PCA9685_MODE2);
+
+  // set inverted logic mode by setting bit 4 to 0
+  bitClear(mode2, 4);
+
+  _write8bits(PCA9685_MODE2, mode2);
+}
+
+//
+//void PCA9685::printBin(uint8_t bin)
+//{
+//  Serial.print("B");
+//  for (int8_t i = 7; i >= 0; i--)
+//  {
+//    Serial.print(bitRead(bin, i));
+//  }
+//  Serial.println();
+//}
+
+void PCA9685::wake()
+{
+  // get current mode1
+  uint8_t mode1 = _read8bits(PCA9685_MODE1);
+
+  // set normal mode by setting bit 4 to 0
+  bitClear(mode1, 4);
+
+  // wake
+  _write8bits(PCA9685_MODE1, mode1);
+
+  // delay at least 500 us 
+  delay(1);
+}
+
+void PCA9685::sleep()
+{
+  // get current mode1
+  uint8_t mode1 = _read8bits(PCA9685_MODE1);
+
+  // set sleep mode by setting bit 4 to 1
+  bitSet(mode1, 4);
+
+  // go to sleep
+  _write8bits(PCA9685_MODE1, mode1);
+
+  // delay at least 500 us 
+  delay(1);
+}
+
+/**
+* Set PWM Frequency 40-1000Hz, Default 200Hz
+*/
+void PCA9685::setFrequency(uint16_t freq)
+{
+  uint8_t prescale = round(((float)25000000 / (float)(freq * (long)4096))) - 1;
+  _setPreScale(prescale);
+}
+
+/**
+* Get PWM Frequency
+*/
+uint16_t PCA9685::getFrequency()
+{
+  uint8_t prescale;
+  Wire.beginTransmission((uint8_t)_address);
+  Wire.write((uint8_t)PCA9685_PRESCALE);
+  Wire.endTransmission();
+  Wire.requestFrom(_address, (uint8_t)1);
+  if (Wire.available())
+  {
+    prescale = Wire.read();
+  }
+
+  return round((float)25000000 / (float)(((long)prescale + 1) * (long)4096));
+}
+
+/**
+* PCA9685 PWM set frequency prescale
+*/
+void PCA9685::_setPreScale(uint8_t prescale)
+{
+  // must be in sleep mode to set the prescaler
+  sleep();
+  // set the prescaler
+  _write8bits(PCA9685_PRESCALE, prescale);
   wake();
 }
 
-/**
- * Wake PCA9685 oscillator and enable auto increment
- */
-void PCA9685::wake()
-{
-  I2c.write(_address, (byte) 0x00, (byte) 0B00100001);
+uint8_t PCA9685::_read8bits(uint8_t addr) {
+  Wire.beginTransmission((uint8_t)_address);
+  Wire.write((uint8_t)addr);
+  Wire.endTransmission();
+
+  Wire.requestFrom((uint8_t)_address, (uint8_t)1);
+  return Wire.read();
+}
+
+void PCA9685::_write8bits(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission((uint8_t)_address);
+  Wire.write((uint8_t)reg);
+  Wire.write((uint8_t)value);
+  Wire.endTransmission();
 }
 
 /**
- * Set PWM Frequency 40-1000Hz, Default 200Hz
- */
-void PCA9685::setPWMFrequency(uint16_t freq)
+* Get the current 12 bit PWM value
+*/
+uint16_t PCA9685::getChannel(uint8_t channel)
 {
-  uint8_t prescale = round(((float)25000000 / (float)(freq * (long)4096))) - 1;
-  PWMPreScale(prescale);
-}
-
-/**
- * Get PWM Frequency
- */
-uint16_t PCA9685::getPWMFrequency()
-{
-  uint16_t freq;
-  I2c.read(_address, (byte) 0xFE, (uint8_t) 1);
-  while (I2c.available()) {
-    freq = I2c.receive();
-  }
-  return freq;
-}
-
-void PCA9685::PWM(uint8_t startChannel, uint8_t endChannel, uint16_t value)
-{
-  PWM12(startChannel, endChannel, CIELPWM(value));
-}
-
-/**
- * Single channel 8bit PWM only.  Slow in loop
- */
-void PCA9685::PWM(uint8_t channel, uint16_t value)
-{
-  PWM12(channel, CIELPWM(value));
-}
-
-void PCA9685::PWM12(uint8_t startChannel, uint8_t endChannel, uint16_t value)
-{
-  uint8_t start = (startChannel * 4) + 6;
-  int range = ((endChannel + 1) - startChannel) * 4;
-
-  uint8_t values[range];
-  memset(values, 0, range);
-
-  int stackptr = 2;
-  while(startChannel <= endChannel) {
-    values[stackptr++] = lowByte(value);
-    values[stackptr++] = highByte(value);
-    stackptr += 2;
-    startChannel++;
-  }
-
-  I2c.write(_address, start, values, range);
-}
-
-/**
- * Single channel 12bit PWM only.  Slow in loop
- */
-void PCA9685::PWM12(uint8_t channel, uint16_t value)
-{
-  uint8_t values[2] = { lowByte(value), highByte(value) };
-  channel = (channel * 4) + 8;
-  I2c.write(_address, channel, values, 2);
-}
-
-/**
- * Get the current 12 bit PWM value
- */
-uint16_t PCA9685::getPWM(uint8_t channel)
-{
-  uint8_t onLow, onHi, offLow, offHi;
+  uint16_t level = 0;
   channel = (channel * 4) + 6;
-  I2c.read(_address, channel, (uint8_t) 4);
-  while (I2c.available()) {
-    onLow = I2c.receive();
-    onHi = I2c.receive();
-    offLow = I2c.receive();
-    offHi = I2c.receive();
-  }
+  Wire.beginTransmission((uint8_t)_address);
+  Wire.write((uint8_t)channel);
+  Wire.endTransmission();
 
-  return (word((offHi & 0B00001111), offLow) - word((onHi & 0B00001111), onLow));
+  Wire.requestFrom((uint8_t)_address, (uint8_t)PCA9685_SUBADR3);
+  while (Wire.available()){
+    uint8_t onLow = Wire.read();
+    uint8_t onHi = Wire.read();
+    uint8_t offLow = Wire.read();
+    uint8_t offHi = Wire.read();
+    level = (word((offHi & 0x0F), offLow) - word((onHi & 0x0F), onLow));
+  }
+  return level;
+}
+
+/*
+Send PWM only OFF to channel, PWM start at 0. auto-incremental.
+40% faster than single write and channel changes together.
+*/
+void PCA9685::_setChannels(uint8_t start, uint8_t end, uint16_t* values)
+{
+  Wire.beginTransmission(_address);
+  byte startcmd = start * 4 + 6;
+  Wire.write((uint8_t)startcmd);
+
+  // start from channel 0 ON
+  for (uint8_t ch = 0; ch < end; ch++)
+  {
+    Wire.write((uint8_t)0x00); // set all ON time to 0
+    Wire.write((uint8_t)0x00);
+    Wire.write(lowByte(values[ch])); // set OFF according to value
+    Wire.write(highByte(values[ch]));
+  }
+  Wire.endTransmission();
 }
 
 /**
- * PCA9685 PWM frequency prescale
- */
-void PCA9685::PWMPreScale(uint8_t prescale)
+* Set multiple channels to the same 12bit value
+*/
+void PCA9685::setChannels(uint8_t start, uint8_t end, uint16_t value)
 {
-  I2c.write(_address, (byte) 0xFE, prescale);
+  uint16_t newvals[end];
+  memset(newvals, 0, end * 2);
+
+  for (uint8_t ch = 0; ch < end; ch++)
+  {
+    newvals[ch] = value;
+  }
+
+  _setChannels(start, end, newvals);
 }
+
+/**
+* Single channel 12bit PWM only.  Slow in loop
+*/
+void PCA9685::setChannel(uint8_t channel, uint16_t value)
+{
+  setChannels(channel, 1, value);
+}
+
+/**
+* Set multiple channels to the same 8bit value
+*/
+void PCA9685::setChannels8bit(uint8_t start, uint8_t end, uint8_t value)
+{
+  setChannels(start, end, CIEL_8_12(value));
+}
+
+/**
+* Single channel 8bit PWM only.  Slow in loop
+*/
+void PCA9685::setChannel8bit(uint8_t channel, uint8_t value)
+{
+  setChannels(channel, 1, CIEL_8_12(value));
+}
+
+/*
+Default 8 bit input and 12 bit sRGB CIE lab corrected PWM output
+*/
+RGBLevels PCA9685::getRGB(uint8_t red, uint8_t green, uint8_t blue)
+{
+  return RGBLevels(CIEL_8_12(blue), CIEL_8_12(green), CIEL_8_12(red));
+}
+
+/*
+10 bit input and 12 bit sRGB CIE lab corrected PWM output
+*/
+RGBLevels PCA9685::goToRGBHI(uint16_t red, uint16_t green, uint16_t blue)
+{
+  return RGBLevels(CIEL_10_12(blue), CIEL_10_12(green), CIEL_10_12(red));
+}
+
